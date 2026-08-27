@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
@@ -34,6 +36,7 @@ jobs:
           rm -rf docs
           mkdir -p docs
           cp -r dist/* docs/
+          # base path /dodungmamnon/ already set in vite.config
           touch docs/.nojekyll
 
       - name: Commit docs to main
