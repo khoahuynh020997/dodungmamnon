@@ -19,9 +19,13 @@ export function OrderCard({ order }: { order: Order }) {
   const updateStatus = useShopStore((s) => s.updateOrderStatus);
   const deleteOrder = useShopStore((s) => s.deleteOrder);
 
-  function setStatus(status: OrderStatus) {
-    updateStatus(order.id, status);
-    toast.success(`${formatOrderNumber(order.number)} · ${STATUS_LABEL[status]}`);
+  async function setStatus(status: OrderStatus) {
+    try {
+      await updateStatus(order.id, status);
+      toast.success(`${formatOrderNumber(order.number)} · ${STATUS_LABEL[status]}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không cập nhật được trạng thái");
+    }
   }
 
   const next =
@@ -63,9 +67,13 @@ export function OrderCard({ order }: { order: Order }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-primary"
-                onSelect={() => {
-                  deleteOrder(order.id);
-                  toast("Đã xóa đơn hàng");
+                onSelect={async () => {
+                  try {
+                    await deleteOrder(order.id);
+                    toast("Đã xóa đơn hàng");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Không xóa được đơn");
+                  }
                 }}
               >
                 Xóa đơn
@@ -83,7 +91,11 @@ export function OrderCard({ order }: { order: Order }) {
           </p>
         </div>
         {next ? (
-          <Button size="sm" variant={next === "paid" ? "default" : "secondary"} onClick={() => setStatus(next)}>
+          <Button
+            size="sm"
+            variant={next === "paid" ? "default" : "secondary"}
+            onClick={() => setStatus(next)}
+          >
             <Truck />
             {next === "delivered" ? "Đã giao thành công" : "Đã nhận tiền"}
           </Button>

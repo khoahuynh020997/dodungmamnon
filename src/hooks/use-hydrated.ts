@@ -3,19 +3,23 @@ import { useShopStore } from "@/lib/store";
 
 export function useHydrated() {
   const [hydrated, setHydrated] = useState(false);
+  const loadAll = useShopStore((s) => s.loadAll);
 
   useEffect(() => {
-    const finish = () => {
-      useShopStore.getState().seedIfEmpty();
-      setHydrated(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadAll();
+      } catch {
+        // error stored in store; still mark hydrated so UI can show empty/error
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    if (useShopStore.persist.hasHydrated()) {
-      finish();
-      return;
-    }
-    const unsub = useShopStore.persist.onFinishHydration(finish);
-    return unsub;
-  }, []);
+  }, [loadAll]);
 
   return hydrated;
 }

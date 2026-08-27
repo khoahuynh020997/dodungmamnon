@@ -35,6 +35,7 @@ export function OrderDialog() {
   const [form, setForm] = useState<FormState>(empty);
   const [errors, setErrors] = useState<Partial<FormState>>({});
   const [pickedId, setPickedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -93,18 +94,26 @@ export function OrderDialog() {
     return Object.keys(next).length === 0;
   }
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!validate()) return;
-    const order = addOrder({
-      name: form.name,
-      phone: form.phone,
-      address: form.address,
-      amount: parseAmount(form.amount),
-      customerId: pickedId,
-    });
-    toast.success(`Đã tạo ${formatOrderNumber(order.number)} — đang giao`);
-    close();
+    if (!validate() || saving) return;
+    setSaving(true);
+    try {
+      const order = await addOrder({
+        name: form.name,
+        phone: form.phone,
+        address: form.address,
+        amount: parseAmount(form.amount),
+        customerId: pickedId,
+      });
+      toast.success(`Đã tạo ${formatOrderNumber(order.number)} — đang giao`);
+      close();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Không lưu được đơn hàng";
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -113,15 +122,11 @@ export function OrderDialog() {
         <DialogHeader>
           <DialogTitle>Tạo đơn hàng</DialogTitle>
           <DialogDescription>
-            Nhập thông tin khách. Khách cũ sẽ được gợi ý để điền nhanh.
+            Nhập thông tin khách. Dữ liệu lưu trên Supabase.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field
-            label="Tên khách hàng"
-            error={errors.name}
-            htmlFor="order-name"
-          >
+          <Field label="Tên khách hàng" error={errors.name} htmlFor="order-name">
             <Input
               id="order-name"
               autoComplete="name"
@@ -188,10 +193,12 @@ export function OrderDialog() {
             />
           </Field>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={close}>
+            <Button type="button" variant="outline" onClick={close} disabled={saving}>
               Hủy
             </Button>
-            <Button type="submit">Lưu đơn hàng</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Đang lưu…" : "Lưu đơn hàng"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

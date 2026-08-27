@@ -1,200 +1,232 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { normalizePhone } from "@/lib/format";
-import { makeSeed } from "@/lib/seed";
+import { supabase, toMs, type DbCustomer, type DbOrder } from "@/lib/supabase";
 import type { Customer, Order, OrderStatus } from "@/lib/types";
 
-function uid() {
-  return crypto.randomUUID();
+function mapCustomer(row: DbCustomer): Customer {
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    address: row.address,
+    createdAt: toMs(row.created_at) ?? Date.now(),
+    lastOrderAt: toMs(row.last_order_at) ?? Date.now(),
+  };
+}
+
+function mapOrder(row: DbOrder): Order {
+  return {
+    id: row.id,
+    number: row.number,
+    customerId: row.customer_id ?? "",
+    name: row.name,
+    phone: row.phone,
+    address: row.address,
+    amount: Number(row.amount),
+    status: row.status,
+    createdAt: toMs(row.created_at) ?? Date.now(),
+    updatedAt: toMs(row.updated_at) ?? Date.now(),
+    deliveredAt: toMs(row.delivered_at),
+    paidAt: toMs(row.paid_at),
+  };
 }
 
 export interface ShopState {
   customers: Customer[];
   orders: Order[];
-  nextOrderNumber: number;
+  loading: boolean;
+  error: string | null;
   dialogOpen: boolean;
   dialogCustomerId: string | null;
-  seeded: boolean;
+  loadAll: () => Promise<void>;
   addOrder: (input: {
     name: string;
     phone: string;
     address: string;
     amount: number;
     customerId?: string | null;
-  }) => Order;
-  updateOrderStatus: (id: string, status: OrderStatus) => void;
-  deleteOrder: (id: string) => void;
+  }) => Promise<Order>;
+  updateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
+  deleteOrder: (id: string) => Promise<void>;
   updateCustomer: (
     id: string,
     patch: Pick<Customer, "name" | "phone" | "address">,
-  ) => void;
-  deleteCustomer: (id: string) => void;
+  ) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
   openCreateOrder: (customerId?: string | null) => void;
   closeCreateOrder: () => void;
-  seedIfEmpty: () => void;
-  clearSampleData: () => void;
 }
 
-function upsertCustomer(
-  customers: Customer[],
-  input: { name: string; phone: string; address: string; customerId?: string | null },
-  at: number,
-): { customers: Customer[]; customer: Customer } {
+async function resolveCustomer(input: {
+  name: string;
+  phone: string;
+  address: string;
+  customerId?: string | null;
+}): Promise<Customer> {
+  const name = input.name.trim();
+  const phone = input.phone.trim();
+  const address = input.address.trim();
+  const nowIso = new Date().toISOString();
+
   if (input.customerId) {
-    const existing = customers.find((c) => c.id === input.customerId);
-    if (existing) {
-      const customer: Customer = {
-        ...existing,
-        name: input.name.trim(),
-        phone: input.phone.trim(),
-        address: input.address.trim(),
-        lastOrderAt: at,
-      };
-      return {
-        customers: customers.map((c) => (c.id === customer.id ? customer : c)),
-        customer,
-      };
-    }
+    const { data, error } = await supabase
+      .from("customers")
+      .update({ name, phone, address, last_order_at: nowIso })
+      .eq("id", input.customerId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapCustomer(data as DbCustomer);
   }
 
-  const phoneKey = normalizePhone(input.phone);
-  const existing = customers.find((c) => normalizePhone(c.phone) === phoneKey);
+  const phoneKey = normalizePhone(phone);
+  const { data: existingList, error: findError } = await supabase
+    .from("customers")
+    .select("*")
+    .order("last_order_at", { ascending: false });
+  if (findError) throw findError;
+
+  const existing = (existingList as DbCustomer[] | null)?.find(
+    (c) => normalizePhone(c.phone) === phoneKey,
+  );
+
   if (existing) {
-    const customer: Customer = {
-      ...existing,
-      name: input.name.trim(),
-      phone: input.phone.trim(),
-      address: input.address.trim(),
-      lastOrderAt: at,
-    };
-    return {
-      customers: customers.map((c) => (c.id === customer.id ? customer : c)),
-      customer,
-    };
+    const { data, error } = await supabase
+      .from("customers")
+      .update({ name, phone, address, last_order_at: nowIso })
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return mapCustomer(data as DbCustomer);
   }
 
-  const customer: Customer = {
-    id: uid(),
-    name: input.name.trim(),
-    phone: input.phone.trim(),
-    address: input.address.trim(),
-    createdAt: at,
-    lastOrderAt: at,
-  };
-  return { customers: [customer, ...customers], customer };
+  const { data, error } = await supabase
+    .from("customers")
+    .insert({ name, phone, address, created_at: nowIso, last_order_at: nowIso })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return mapCustomer(data as DbCustomer);
 }
 
-export const useShopStore = create<ShopState>()(
-  persist(
-    (set, get) => ({
-      customers: [],
-      orders: [],
-      nextOrderNumber: 1,
-      dialogOpen: false,
-      dialogCustomerId: null,
-      seeded: false,
+export const useShopStore = create<ShopState>((set, get) => ({
+  customers: [],
+  orders: [],
+  loading: false,
+  error: null,
+  dialogOpen: false,
+  dialogCustomerId: null,
 
-      addOrder: (input) => {
-        const at = Date.now();
-        const { customers, customer } = upsertCustomer(get().customers, input, at);
-        const number = get().nextOrderNumber;
-        const order: Order = {
-          id: uid(),
-          number,
-          customerId: customer.id,
-          name: customer.name,
-          phone: customer.phone,
-          address: customer.address,
-          amount: input.amount,
-          status: "delivering",
-          createdAt: at,
-          updatedAt: at,
-        };
-        set({
-          customers,
-          orders: [order, ...get().orders],
-          nextOrderNumber: number + 1,
-        });
-        return order;
-      },
+  loadAll: async () => {
+    set({ loading: true, error: null });
+    try {
+      const [customersRes, ordersRes] = await Promise.all([
+        supabase.from("customers").select("*").order("last_order_at", { ascending: false }),
+        supabase.from("orders").select("*").order("created_at", { ascending: false }),
+      ]);
+      if (customersRes.error) throw customersRes.error;
+      if (ordersRes.error) throw ordersRes.error;
+      set({
+        customers: ((customersRes.data as DbCustomer[]) ?? []).map(mapCustomer),
+        orders: ((ordersRes.data as DbOrder[]) ?? []).map(mapOrder),
+        loading: false,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Không tải được dữ liệu từ Supabase";
+      set({ loading: false, error: message });
+      throw e;
+    }
+  },
 
-      updateOrderStatus: (id, status) => {
-        const at = Date.now();
-        set({
-          orders: get().orders.map((order) => {
-            if (order.id !== id) return order;
-            const next: Order = { ...order, status, updatedAt: at };
-            if (status === "delivered" && !next.deliveredAt) next.deliveredAt = at;
-            if (status === "paid") {
-              if (!next.deliveredAt) next.deliveredAt = at;
-              next.paidAt = at;
-            }
-            return next;
-          }),
-        });
-      },
+  addOrder: async (input) => {
+    const customer = await resolveCustomer(input);
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("orders")
+      .insert({
+        customer_id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        address: customer.address,
+        amount: input.amount,
+        status: "delivering",
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select("*")
+      .single();
+    if (error) throw error;
+    const order = mapOrder(data as DbOrder);
+    set({
+      customers: [customer, ...get().customers.filter((c) => c.id !== customer.id)],
+      orders: [order, ...get().orders],
+    });
+    return order;
+  },
 
-      deleteOrder: (id) => {
-        set({ orders: get().orders.filter((o) => o.id !== id) });
-      },
+  updateOrderStatus: async (id, status) => {
+    const nowIso = new Date().toISOString();
+    const current = get().orders.find((o) => o.id === id);
+    const patch: Record<string, unknown> = {
+      status,
+      updated_at: nowIso,
+    };
+    if (status === "delivered" && !current?.deliveredAt) {
+      patch.delivered_at = nowIso;
+    }
+    if (status === "paid") {
+      if (!current?.deliveredAt) patch.delivered_at = nowIso;
+      patch.paid_at = nowIso;
+    }
+    const { data, error } = await supabase
+      .from("orders")
+      .update(patch)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    const order = mapOrder(data as DbOrder);
+    set({
+      orders: get().orders.map((o) => (o.id === id ? order : o)),
+    });
+  },
 
-      updateCustomer: (id, patch) => {
-        set({
-          customers: get().customers.map((c) =>
-            c.id === id
-              ? {
-                  ...c,
-                  name: patch.name.trim(),
-                  phone: patch.phone.trim(),
-                  address: patch.address.trim(),
-                }
-              : c,
-          ),
-        });
-      },
+  deleteOrder: async (id) => {
+    const { error } = await supabase.from("orders").delete().eq("id", id);
+    if (error) throw error;
+    set({ orders: get().orders.filter((o) => o.id !== id) });
+  },
 
-      deleteCustomer: (id) => {
-        set({ customers: get().customers.filter((c) => c.id !== id) });
-      },
+  updateCustomer: async (id, patch) => {
+    const { data, error } = await supabase
+      .from("customers")
+      .update({
+        name: patch.name.trim(),
+        phone: patch.phone.trim(),
+        address: patch.address.trim(),
+      })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    const customer = mapCustomer(data as DbCustomer);
+    set({
+      customers: get().customers.map((c) => (c.id === id ? customer : c)),
+    });
+  },
 
-      openCreateOrder: (customerId = null) => {
-        set({ dialogOpen: true, dialogCustomerId: customerId ?? null });
-      },
+  deleteCustomer: async (id) => {
+    const { error } = await supabase.from("customers").delete().eq("id", id);
+    if (error) throw error;
+    set({ customers: get().customers.filter((c) => c.id !== id) });
+  },
 
-      closeCreateOrder: () => {
-        set({ dialogOpen: false, dialogCustomerId: null });
-      },
+  openCreateOrder: (customerId = null) => {
+    set({ dialogOpen: true, dialogCustomerId: customerId ?? null });
+  },
 
-      seedIfEmpty: () => {
-        const state = get();
-        if (state.seeded || state.orders.length > 0 || state.customers.length > 0) {
-          if (!state.seeded) set({ seeded: true });
-          return;
-        }
-        const seed = makeSeed(Date.now());
-        set({
-          customers: seed.customers,
-          orders: seed.orders,
-          nextOrderNumber: seed.nextOrderNumber,
-          seeded: true,
-        });
-      },
-
-      clearSampleData: () => {
-        set({
-          customers: get().customers.filter((c) => !c.isSample),
-          orders: get().orders.filter((o) => !o.isSample),
-        });
-      },
-    }),
-    {
-      name: "ddmn-shop-v1",
-      partialize: (state) => ({
-        customers: state.customers,
-        orders: state.orders,
-        nextOrderNumber: state.nextOrderNumber,
-        seeded: state.seeded,
-      }),
-    },
-  ),
-);
+  closeCreateOrder: () => {
+    set({ dialogOpen: false, dialogCustomerId: null });
+  },
+}));
