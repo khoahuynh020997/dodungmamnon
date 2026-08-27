@@ -1,0 +1,81 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-sans: "Be Vietnam Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Be Vietnam Pro", ui-serif, serif;
+
+  --color-bg: #fff7f4;
+  --color-surface: #ffffff;
+  --color-surface-2: #fff1ec;
+  --color-fg: #1c1412;
+  --color-muted: #7a6560;
+  --color-faint: #b39a94;
+  --color-border: #eddcd6;
+  --color-primary: #c41e3a;
+  --color-primary-hover: #a31830;
+  --color-primary-fg: #fff7f4;
+  --color-primary-soft: #fde8eb;
+  --color-success: #1f6b45;
+  --color-success-soft: #e5f4ec;
+  --color-warn: #9a5b12;
+  --color-warn-soft: #f8ecd9;
+
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  --shadow-card:
+    0px 0px 0px 1px rgba(28, 20, 18, 0.05),
+    0px 1px 2px -1px rgba(28, 20, 18, 0.05),
+    0px 8px 24px -12px rgba(196, 30, 58, 0.12);
+  --shadow-lift:
+    0px 0px 0px 1px rgba(28, 20, 18, 0.06),
+    0px 10px 28px -12px rgba(196, 30, 58, 0.18);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input[type="date"] {
+    color-scheme: light;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
