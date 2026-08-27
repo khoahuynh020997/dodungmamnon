@@ -46,7 +46,7 @@ export function CustomersPage() {
       <header className="mb-5">
         <h1 className="font-display text-3xl font-semibold tracking-tight">Khách hàng</h1>
         <p className="mt-1 text-sm text-muted">
-          Lưu lại sau mỗi đơn. Lần sau chỉ cần chọn để điền nhanh.
+          Lưu trên Supabase. Lần sau chỉ cần chọn để điền nhanh.
         </p>
       </header>
 
@@ -99,9 +99,15 @@ export function CustomersPage() {
                       size="sm"
                       variant="ghost"
                       aria-label="Xóa khách"
-                      onClick={() => {
-                        deleteCustomer(customer.id);
-                        toast("Đã xóa khách hàng");
+                      onClick={async () => {
+                        try {
+                          await deleteCustomer(customer.id);
+                          toast("Đã xóa khách hàng");
+                        } catch (err) {
+                          toast.error(
+                            err instanceof Error ? err.message : "Không xóa được khách",
+                          );
+                        }
                       }}
                     >
                       <Trash2 />

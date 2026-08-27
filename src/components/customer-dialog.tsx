@@ -30,6 +30,7 @@ export function CustomerDialog({
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!customer) return;
@@ -39,16 +40,23 @@ export function CustomerDialog({
     setError("");
   }, [customer, open]);
 
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!customer) return;
+    if (!customer || saving) return;
     if (!name.trim() || normalizePhone(phone).length < 9 || !address.trim()) {
       setError("Điền đủ tên, số điện thoại và địa chỉ.");
       return;
     }
-    updateCustomer(customer.id, { name, phone, address });
-    toast.success("Đã cập nhật khách hàng");
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await updateCustomer(customer.id, { name, phone, address });
+      toast.success("Đã cập nhật khách hàng");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Không cập nhật được khách");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -82,10 +90,12 @@ export function CustomerDialog({
           </div>
           {error ? <p className="text-xs text-primary">{error}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Hủy
             </Button>
-            <Button type="submit">Lưu</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Đang lưu…" : "Lưu"}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
